@@ -70,6 +70,8 @@ jobs:
           build-args: |
             METABASE_VERSION=${{ matrix.metabase_version }}
             METABASE_DUCKDB_DRIVER_VERSION=${{ matrix.driver_version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   tag-latest:
     needs: [generate-matrix, build]
