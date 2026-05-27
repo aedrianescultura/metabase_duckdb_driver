@@ -1,4 +1,4 @@
-FROM eclipse-temurin:21-jre-jammy
+FROM eclipse-temurin:21-jre-jammy AS base
 
 ENV MB_PLUGINS_DIR=/home/metabase/plugins/
 
@@ -14,6 +14,8 @@ RUN mkdir -p /home/metabase/plugins /home/metabase/data && \
     chown -R metabase:metabase /home/metabase
 
 WORKDIR /home/metabase
+
+FROM base
 
 # Build arguments declared here so base layers above are always cached
 ARG METABASE_VERSION=0.59.12
