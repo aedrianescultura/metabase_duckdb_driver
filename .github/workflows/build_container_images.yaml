@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE_NAME: ghcr.io/motherduckdb/metabase-duckdb
+  IMAGE_NAME: ghcr.io/aedrianescultura/metabase-duckdb
 
 jobs:
   generate-matrix:
