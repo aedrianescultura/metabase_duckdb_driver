@@ -16,3 +16,6 @@ duckdb-driver.iml
 # make dev/dist output
 /dist
 /data
+
+# git worktrees
+/.claude/

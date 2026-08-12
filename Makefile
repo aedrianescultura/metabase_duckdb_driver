@@ -31,10 +31,13 @@ JAR = dist/duckdb.metabase-driver.jar
 
 # This working tree *is* modules/drivers/duckdb, mounted in — the Metabase
 # checkout stays clean apart from the deps patch it needs to see the driver.
+# .claude is masked because git worktrees live under it: mounting them into the
+# Metabase tree would hand the build a second copy of this driver's sources.
 TTY = $(shell [ -t 0 ] && echo -it)
 CLJ = docker run --rm $(TTY) -u $$(id -u):$$(id -g) -e HOME=/home/build \
 	-e motherduck_token \
 	-v "$(CACHE)/home:/home/build" -v "$(MB_DIR):/mb" -v "$(CURDIR):/mb/modules/drivers/duckdb" \
+	-v /mb/modules/drivers/duckdb/.claude \
 	-w /mb $(CLJ_IMAGE)
 
 PATCH = python3 modules/drivers/duckdb/ci/patch-metabase.py
