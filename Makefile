@@ -37,10 +37,7 @@ CLJ = docker run --rm $(TTY) -u $$(id -u):$$(id -g) -e HOME=/home/build \
 	-v "$(CACHE)/home:/home/build" -v "$(MB_DIR):/mb" -v "$(CURDIR):/mb/modules/drivers/duckdb" \
 	-w /mb $(CLJ_IMAGE)
 
-# Both patches are idempotent: skip when they are already applied.
-PATCH = for p in ci/metabase_drivers_deps.patch ci/metabase_test_deps.patch; do \
-		git apply -R --check "modules/drivers/duckdb/$$p" 2>/dev/null || \
-		git apply "modules/drivers/duckdb/$$p"; done
+PATCH = python3 modules/drivers/duckdb/ci/patch-metabase.py
 
 dev: $(JAR)
 	docker compose up -d --build
@@ -57,7 +54,7 @@ $(JAR): $(shell find src resources -type f) deps.edn
 	mkdir -p dist
 ifeq ($(DRIVER_VERSION),)
 	$(MAKE) $(MB_DIR)
-	$(CLJ) bash -c '$(PATCH); ./bin/build-driver.sh duckdb'
+	$(CLJ) bash -c '$(PATCH) && ./bin/build-driver.sh duckdb'
 	cp $(MB_DIR)/resources/modules/duckdb.metabase-driver.jar $@
 else
 	curl -fsSL -o $@ https://github.com/motherduckdb/metabase_duckdb_driver/releases/download/$(DRIVER_VERSION)/duckdb.metabase-driver.jar
@@ -65,11 +62,11 @@ endif
 
 # The suite is Metabase's own driver test suite, so it runs from the checkout.
 test: $(MB_DIR)
-	$(CLJ) bash -c '$(PATCH); DRIVERS=$(DRIVERS) clojure -X:dev:ci:ee:ee-dev:drivers:drivers-dev:test \
+	$(CLJ) bash -c '$(PATCH) && DRIVERS=$(DRIVERS) clojure -X:dev:ci:ee:ee-dev:drivers:drivers-dev:test \
 		$(if $(TEST),:only $(TEST),)'
 
 repl: $(MB_DIR)
-	$(CLJ) bash -c '$(PATCH); clojure -M:dev:ee:ee-dev:drivers:drivers-dev:repl'
+	$(CLJ) bash -c '$(PATCH) && clojure -M:dev:ee:ee-dev:drivers:drivers-dev:repl'
 
 logs:
 	docker compose logs -f metabase
