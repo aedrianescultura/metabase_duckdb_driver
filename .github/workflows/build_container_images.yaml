@@ -1,22 +1,47 @@
 name: Build Container Images
 
 on:
-  # Manual only, one image per run. Every published image is an explicit choice
-  # of Metabase version + driver version rather than an entry in a stored matrix.
+  # One image per run: an explicit Metabase version + driver version, rather than
+  # an entry in a stored matrix.
   #
   # ORDERING: images ADD the driver JAR from its release download URL, so a run
-  # dispatched before "Add .jar file to a release" has attached that JAR fails in
-  # the verify step below. Publish the release, let the asset workflow finish,
-  # then dispatch. (This used to be enforced by chaining off that workflow with
-  # `workflow_run`, which cannot pass inputs.)
-  workflow_dispatch:
+  # that starts before "Add .jar file to a release" has attached that JAR fails
+  # in the verify step below. The workflow_call path gets this for free via
+  # `needs:` in the caller; a manual dispatch relies on the operator waiting.
+  #
+  # The two input blocks below are duplicated because GitHub has no way to share
+  # one between workflow_call and workflow_dispatch. Keep them identical.
+  workflow_call:
     inputs:
       metabase_version:
-        description: 'Metabase version, no "v" prefix (e.g. 0.62.7)'
+        description: 'Metabase version, no "v" prefix (e.g. 0.63.10)'
         required: true
         type: string
       driver_version:
-        description: 'Driver version; must equal the release tag (e.g. 1.5.4.0)'
+        description: 'Driver version; must equal the release tag (e.g. 1.5.5.0)'
+        required: true
+        type: string
+      tag_latest:
+        description: 'Tag as latest'
+        type: boolean
+        default: false
+      force_rebuild:
+        description: 'Overwrite the tag if it already exists'
+        type: boolean
+        default: false
+      dry_run:
+        description: 'Dry run'
+        type: boolean
+        default: false
+
+  workflow_dispatch:
+    inputs:
+      metabase_version:
+        description: 'Metabase version, no "v" prefix (e.g. 0.63.10)'
+        required: true
+        type: string
+      driver_version:
+        description: 'Driver version; must equal the release tag (e.g. 1.5.5.0)'
         required: true
         type: string
       tag_latest:
@@ -51,9 +76,19 @@ jobs:
       # confirming both JARs resolve is the main thing a dry run is good for.
       - name: Verify artifacts exist
         id: artifacts
+        env:
+          METABASE_VERSION: ${{ inputs.metabase_version }}
+          DRIVER_VERSION: ${{ inputs.driver_version }}
+          REPOSITORY: ${{ github.repository }}
         run: |
-          mb_url="https://downloads.metabase.com/v${{ inputs.metabase_version }}/metabase.jar"
-          drv_url="https://github.com/${{ github.repository }}/releases/download/${{ inputs.driver_version }}/duckdb.metabase-driver.jar"
+          version_pattern='^[0-9]+(\.[0-9]+)+$'
+          [[ "$METABASE_VERSION" =~ $version_pattern ]] \
+            || { echo "::error::Invalid Metabase version: $METABASE_VERSION"; exit 1; }
+          [[ "$DRIVER_VERSION" =~ $version_pattern ]] \
+            || { echo "::error::Invalid driver version: $DRIVER_VERSION"; exit 1; }
+
+          mb_url="https://downloads.metabase.com/v${METABASE_VERSION}/metabase.jar"
+          drv_url="https://github.com/${REPOSITORY}/releases/download/${DRIVER_VERSION}/duckdb.metabase-driver.jar"
 
           # Range GET rather than HEAD: release downloads redirect to a CDN that
           # does not answer HEAD reliably.
@@ -64,7 +99,7 @@ jobs:
 
           # Derived here rather than taken as an input so the tag cannot drift
           # from the versions it names.
-          echo "tag=${{ inputs.metabase_version }}-duckdb${{ inputs.driver_version }}" >> "$GITHUB_OUTPUT"
+          echo "tag=${METABASE_VERSION}-duckdb${DRIVER_VERSION}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v4
 

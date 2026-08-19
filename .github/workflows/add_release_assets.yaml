@@ -7,9 +7,35 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  # Which Metabase versions a new driver is published for is a reviewed decision
+  # recorded in metabase_versions.json, not something derivable from the release:
+  # the driver has no hard link to one Metabase version (see the runtime shims in
+  # src/metabase/driver/duckdb.clj), so a release supports a range. The
+  # Dockerfile's ARG METABASE_VERSION names which of those also becomes :latest,
+  # and the guard script fails the release if that pin is not in the file.
+  #
+  # A separate job, rather than a step in `build`, so the release-critical job
+  # keeps its exact working directory -- actions/checkout would clean the
+  # downloaded .jar out of the workspace.
+  compat:
     runs-on: ubuntu-latest
-    
+    outputs:
+      versions: ${{ steps.read.outputs.versions }}
+      primary: ${{ steps.read.outputs.primary }}
+      driver: ${{ steps.read.outputs.driver }}
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Read compatible Metabase versions
+      id: read
+      env:
+        RELEASE_TAG: ${{ github.event.release.tag_name }}
+      run: ./ci/read_compat_versions.sh
+
+  build:
+    needs: compat
+    runs-on: ubuntu-latest
+
     steps:
     - name: Download .jar artifact
       uses: dawidd6/action-download-artifact@v11
@@ -24,3 +50,34 @@ jobs:
       with:
         generate_release_notes: true
         files: duckdb.metabase-driver.jar
+
+  # `needs: build` is the ordering guarantee: every image ADDs the driver JAR from
+  # its release download URL, so no matrix entry can start before that JAR is
+  # attached to the release.
+  images:
+    needs: [build, compat]
+    # Only on a real release. A workflow_dispatch run has no release payload, so
+    # there would be no tag to derive the driver version from.
+    if: github.event_name == 'release'
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      # One unbuildable version must not cancel the images that would have
+      # succeeded.
+      fail-fast: false
+      matrix:
+        metabase_version: ${{ fromJSON(needs.compat.outputs.versions) }}
+    uses: ./.github/workflows/build_container_images.yaml
+    with:
+      metabase_version: ${{ matrix.metabase_version }}
+      # The compat job has already verified this matches the release tag.
+      driver_version: ${{ needs.compat.outputs.driver }}
+      # Exactly one entry gets :latest -- the one the Dockerfile pins as primary.
+      tag_latest: ${{ matrix.metabase_version == needs.compat.outputs.primary }}
+      # A release is authoritative for its own tags: if it is re-published, or
+      # this job is re-run, or someone already hand-dispatched the same
+      # pairing, the tag must be overwritten rather than silently skipped --
+      # a skipped build still reports green while :latest keeps pointing at
+      # old content.
+      force_rebuild: true

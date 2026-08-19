@@ -16,8 +16,14 @@ RUN mkdir -p /home/metabase/plugins /home/metabase/data && \
 WORKDIR /home/metabase
 
 # Build arguments declared here so base layers above are always cached
-ARG METABASE_VERSION=0.59.12
-ARG METABASE_DUCKDB_DRIVER_VERSION=1.5.2.0
+#
+# METABASE_VERSION is the primary pin: `docker build .` with no args reproduces
+# the :latest image, and add_release_assets.yaml reads this exact line to decide
+# which of the versions in metabase_versions.json also gets tagged :latest. It
+# must be one of them -- ci/read_compat_versions.sh fails the release otherwise.
+# Bump it in the same PR as the deps.edn driver bump.
+ARG METABASE_VERSION=0.63.10
+ARG METABASE_DUCKDB_DRIVER_VERSION=1.5.5.0
 # CI overrides this with the repository the build is running in, so a fork's
 # images pull the driver from that fork's own releases instead of from upstream.
 ARG METABASE_DUCKDB_DRIVER_REPO=motherduckdb/metabase_duckdb_driver
