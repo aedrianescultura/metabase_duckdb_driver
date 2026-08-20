@@ -110,31 +110,26 @@ docker build . --tag metabase_duckdb:latest \
 
 ### Publishing new images (maintainers)
 
-Images are published by dispatching **Build Container Images** manually, one image per run. There is no stored matrix — every published image is an explicit choice of Metabase version plus driver version:
+Which Metabase versions the driver supports is recorded in
+[metabase_versions.json](./metabase_versions.json), a plain list of versions.
+
+**Build Container Images** builds exactly one image per run. It runs two ways:
+called automatically by the release flow once per listed version, or dispatched
+by hand with these inputs:
 
 | Input | Required | Default | Effect |
 | --- | --- | --- | --- |
-| `metabase_version` | yes | — | Metabase version, no `v` prefix (e.g. `0.62.7`) |
-| `driver_version` | yes | — | Driver version, which must equal its release tag (e.g. `1.5.4.0`) |
+| `metabase_version` | yes | — | Metabase version, no `v` prefix (e.g. `0.63.10`) |
+| `driver_version` | yes | — | Driver version, which must equal its release tag (e.g. `1.5.5.0`) |
 | `tag_latest` | no | `false` | Also push `:latest` |
 | `force_rebuild` | no | `false` | Overwrite the tag if it already exists |
 | `dry_run` | no | `false` | Build both platforms but push nothing |
 
-The tag is always derived as `<metabase_version>-duckdb<driver_version>`, so it cannot drift from the versions it names. Both JARs are checked to exist before the build starts, which turns a typo into a fast, named failure rather than a 404 partway through a multi-platform build.
-
-`:latest` is opt-in per run and is never inferred, so that rebuilding an older combination cannot repoint it at an old Metabase. The tradeoff is that **`tag_latest` is a release-day checklist item**: forget it and `:latest` silently stays on the previous version.
-
-Only build combinations known to work together. Metabase 0.63 is deliberately unpublished: v63 passes namespaced keywords in connection details, which driver 1.5.4.0 forwards to DuckDB as JDBC properties and fails to connect ([#103](https://github.com/motherduckdb/metabase_duckdb_driver/issues/103)). The fix is on `main` but unreleased, so 0.63 images should not be built until the release that carries it exists.
-
 #### Releasing a new driver version
 
-1. Publish the release. Its tag must point at a commit with a successful `build_metabase_duckdb_driver.yaml` run, since the release-asset workflow fetches that artifact by commit SHA.
-2. **Add .jar file to a release** runs on `release: published` and attaches `duckdb.metabase-driver.jar`.
-3. Once that JAR is attached, dispatch **Build Container Images** once per Metabase version you want paired with the new driver, checking `tag_latest` on the newest one.
-
-Step 3 depends on step 2: the image build downloads the driver JAR from the release URL, so dispatching early fails the verify step with `No driver JAR at ...`. This ordering used to be enforced automatically by chaining the image build off the release-asset workflow with `workflow_run`, which cannot pass inputs; it is now the dispatcher's responsibility.
-
-Pairing an existing driver with a new Metabase version needs no release at all — just dispatch **Build Container Images** with that Metabase version and the already-published driver version.
+1. In one PR: bump `org.duckdb/duckdb_jdbc` in [deps.edn](./deps.edn) (this *is* the driver version), `ARG METABASE_VERSION` and `ARG METABASE_DUCKDB_DRIVER_VERSION` in the [Dockerfile](./Dockerfile), and [metabase_versions.json](./metabase_versions.json) if the supported range changed. Merge to `main`.
+2. Publish the release, tagged with the bare new driver version (e.g. `1.5.5.0`). Its tag must point at a commit with a successful `build_metabase_duckdb_driver.yaml` run, since the release-asset workflow fetches that artifact by commit SHA — and at a commit containing the updated `metabase_versions.json`, since the workflow reads the file from the tagged commit. The workflow rejects a tag that does not match the driver version in `deps.edn` and the Dockerfile.
+3. **Add .jar file to a release** first checks that the versions above agree, then attaches `duckdb.metabase-driver.jar`, then builds one image per version in the file, tagging `:latest` on the primary.
 
 Both the target registry and the driver download URL are derived from the repository the workflow runs in, so the whole pipeline can be exercised on a fork without editing anything.
 

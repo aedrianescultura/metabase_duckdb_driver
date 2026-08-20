@@ -7,9 +7,25 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  compat:
     runs-on: ubuntu-latest
-    
+    outputs:
+      versions: ${{ steps.read.outputs.versions }}
+      primary: ${{ steps.read.outputs.primary }}
+      driver: ${{ steps.read.outputs.driver }}
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Read compatible Metabase versions
+      id: read
+      env:
+        RELEASE_TAG: ${{ github.event.release.tag_name }}
+      run: ./ci/read_metabase_versions.sh
+
+  build:
+    needs: compat
+    runs-on: ubuntu-latest
+
     steps:
     - name: Download .jar artifact
       uses: dawidd6/action-download-artifact@v11
@@ -24,3 +40,20 @@ jobs:
       with:
         generate_release_notes: true
         files: duckdb.metabase-driver.jar
+
+  images:
+    needs: [build, compat]
+    if: github.event_name == 'release'
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        metabase_version: ${{ fromJSON(needs.compat.outputs.versions) }}
+    uses: ./.github/workflows/build_container_images.yaml
+    with:
+      metabase_version: ${{ matrix.metabase_version }}
+      driver_version: ${{ needs.compat.outputs.driver }}
+      tag_latest: ${{ matrix.metabase_version == needs.compat.outputs.primary }}
+      force_rebuild: true
