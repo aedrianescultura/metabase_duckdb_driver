@@ -115,9 +115,20 @@ docker build . --tag metabase_duckdb:latest \
 Which Metabase versions the driver supports is recorded in
 [metabase_versions.json](./metabase_versions.json), a plain list of versions.
 
-**Build Container Images** builds exactly one image per run. It runs two ways:
-called automatically by the release flow once per listed version, or dispatched
-by hand with these inputs:
+Images are built by the same workflow that builds the driver
+(`build_metabase_duckdb_driver.yaml`), always from the jar produced in that
+run, never from a release download:
+
+- Pull requests push `pr-<number>` (PRs from forks build without pushing).
+- Pushes to `main` push `main` and `sha-<short-sha>`.
+- Publishing a release attaches the jar to the release and pushes one image per
+  listed Metabase version, tagged `<metabase_version>-duckdb<driver_version>`,
+  with `:latest` going to the newest listed Metabase version.
+
+**Build Container Images** is a manual backfill tool for combining an
+already-published driver release with another Metabase version (e.g. a new
+Metabase release for an existing driver). It pulls the driver jar from that
+GitHub release and takes these inputs:
 
 | Input | Required | Default | Effect |
 | --- | --- | --- | --- |
@@ -130,8 +141,7 @@ by hand with these inputs:
 #### Releasing a new driver version
 
 1. In one PR: bump `org.duckdb/duckdb_jdbc` in [deps.edn](./deps.edn) (this *is* the driver version), and [metabase_versions.json](./metabase_versions.json) if the supported range changed. The Dockerfile defaults to the newest listed Metabase version and the newest driver release, so it needs no edits. Merge to `main`.
-2. Publish the release, tagged with the bare new driver version (e.g. `1.5.5.0`). Its tag must point at a commit with a successful `build_metabase_duckdb_driver.yaml` run, since the release-asset workflow fetches that artifact by commit SHA — and at a commit containing the updated `metabase_versions.json`, since the workflow reads the file from the tagged commit. The workflow rejects a tag that does not match the driver version in `deps.edn`.
-3. **Add .jar file to a release** first checks the tag against `deps.edn`, then attaches `duckdb.metabase-driver.jar`, then builds one image per version in the file, tagging `:latest` on the newest one.
+2. Publish the release, tagged with the bare new driver version (e.g. `1.5.5.0`), pointing at a commit that contains the updated `metabase_versions.json`. The workflow rejects a tag that does not match the driver version in `deps.edn`. The release run then builds the jar from the tagged commit, attaches it to the release, and pushes the images.
 
 Both the target registry and the driver download URL are derived from the repository the workflow runs in, so the whole pipeline can be exercised on a fork without editing anything.
 
