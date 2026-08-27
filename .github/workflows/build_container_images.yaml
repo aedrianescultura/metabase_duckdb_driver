@@ -94,6 +94,7 @@ jobs:
           # Derived here rather than taken as an input so the tag cannot drift
           # from the versions it names.
           echo "tag=${METABASE_VERSION}-duckdb${DRIVER_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "driver_url=$drv_url" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v4
 
@@ -133,8 +134,7 @@ jobs:
             ${{ inputs.tag_latest && format('{0}:latest', env.IMAGE_NAME) || '' }}
           build-args: |
             METABASE_VERSION=${{ inputs.metabase_version }}
-            METABASE_DUCKDB_DRIVER_VERSION=${{ inputs.driver_version }}
-            METABASE_DUCKDB_DRIVER_REPO=${{ github.repository }}
+            DUCKDB_DRIVER_URL=${{ steps.artifacts.outputs.driver_url }}
 
       # Without this a skipped build is indistinguishable from a successful one
       # in the run list.
