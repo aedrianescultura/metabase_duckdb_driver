@@ -16,11 +16,24 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    # versions feeds the image build matrix; primary (the newest listed) also
+    # gets :latest; driver comes from deps.edn, the single place the driver
+    # version is pinned, and must match the release tag.
     - name: Read compatible Metabase versions
       id: read
       env:
         RELEASE_TAG: ${{ github.event.release.tag_name }}
-      run: ./ci/read_metabase_versions.sh
+      run: |
+        driver="$(sed -n 's/.*duckdb_jdbc {:mvn\/version "\([^"]*\)".*/\1/p' deps.edn)"
+        if [ -n "$RELEASE_TAG" ] && [ "$RELEASE_TAG" != "$driver" ]; then
+          echo "::error::Release tag $RELEASE_TAG does not match the driver version $driver in deps.edn"
+          exit 1
+        fi
+        {
+          echo "versions=$(jq -c . metabase_versions.json)"
+          echo "primary=$(jq -r 'sort_by(split(".") | map(tonumber)) | last' metabase_versions.json)"
+          echo "driver=$driver"
+        } >> "$GITHUB_OUTPUT"
 
   build:
     needs: compat
