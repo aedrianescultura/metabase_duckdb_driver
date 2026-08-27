@@ -125,7 +125,9 @@ jobs:
 
     - name: Run integration tests
       working-directory: ./metabase
-      continue-on-error: true
+      # Advisory on PRs and main, blocking on releases: the release jobs below
+      # gate on this job.
+      continue-on-error: ${{ github.event_name != 'release' }}
       env:
         motherduck_token: ${{ matrix.target == 'motherduck' && secrets.motherduck_ci_user_token || '' }}
       run: |
@@ -137,7 +139,7 @@ jobs:
   # via build_container_images.yaml instead.
 
   add-release-asset:
-    needs: build
+    needs: [build, integration-tests]
     if: github.event_name == 'release'
     runs-on: ubuntu-latest
     permissions:
@@ -182,7 +184,7 @@ jobs:
 
   # Skipped on non-release events along with compat, its skipped dependency.
   release-images:
-    needs: [build, compat]
+    needs: [build, compat, integration-tests]
     runs-on: ubuntu-latest
     permissions:
       contents: read
